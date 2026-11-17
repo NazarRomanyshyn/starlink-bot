@@ -195,15 +195,18 @@ async def handle_web_request(request):
         return web.json_response({"ok": False, "error": str(e)}, status=400)
 
 
+async def handle_ping(request):
+    return web.Response(text="Bot is alive!")
+
 async def start_web_server():
     app = web.Application()
     app.router.add_post('/send', handle_web_request)
+    app.router.add_get('/', handle_ping)  # <--- Додайте цей рядок
+    
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Автоматично беремо порт з системних змінних Render (або 8080 за замовчуванням)
     port = int(os.environ.get("PORT", 8080))
-    
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"🌐 Веб-сервер запущено на порту {port}")
