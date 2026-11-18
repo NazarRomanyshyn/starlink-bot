@@ -49,11 +49,11 @@ async def cmd_report(message: Message):
 
 # ========= СПІЛЬНА ЛОГІКА ЗАПИСУ ТА ВІДПРАВКИ =========
 async def process_and_save_report(text: str, chat_id: int):
-    if not text or not text.strip():
+    if not text or not str(text).strip():
         return
 
-    # Забираємо зайві пробіли з вхідного тексту
-    cleaned_text = text.strip()
+    # Забираємо зайві пробіли та згортаємо зайві переноси рядків
+    cleaned_text = re.sub(r'\s+', ' ', str(text)).strip()
 
     # Парсимо звіт Starlink
     starlink_match = re.search(r"KIT.*?(\d{3})", cleaned_text, re.IGNORECASE)
@@ -80,7 +80,7 @@ async def process_and_save_report(text: str, chat_id: int):
         except Exception as e:
             print(f"[ПОМИЛКА БАЗИ]: {e}")
 
-    # Дублюємо повідомлення в групу (або куди вказано), прибравши зайві пробіли
+    # Дублюємо повідомлення в групу (або куди вказано) з очищеним текстом
     try:
         target_chat = GROUP_CHAT_ID if GROUP_CHAT_ID else chat_id
         await bot.send_message(chat_id=target_chat, text=cleaned_text)
@@ -122,8 +122,11 @@ async def send_report(chat_id: int, is_final: bool = False):
             vol_str = f"{val:.2f} МБ"
 
         # Очищуємо дати від зайвих пробілів
-        dates = ", ".join([d.strip() for d in data["dates"]]) if data["dates"] else "-"
-        rows.append(f"<code>{starlink.strip():<4} | {vol_str:<9} | {dates}</code>")
+        clean_dates = [re.sub(r'\s+', '', str(d)) for d in data["dates"]]
+        dates = ", ".join(clean_dates) if clean_dates else "-"
+        
+        clean_starlink = str(starlink).strip()
+        rows.append(f"<code>{clean_starlink:<4} | {vol_str:<9} | {dates}</code>")
 
     if total_all >= 1024:
         total_str = f"{total_all / 1024:.2f} ГБ"
@@ -166,11 +169,12 @@ async def cmd_list(message: Message):
         else:
             vol_str = f"{volume:.2f} МБ"
         
-        # Прибираємо зайві пробіли у полях з бази
+        # Повне очищення пробілів у полях з бази
+        clean_id = str(rec_id).strip()
         clean_kit = str(kit).strip()
         clean_date = str(date).strip()
         
-        text += f"<code>{rec_id!s:<2} | {clean_kit:<4} | {vol_str:<8} | {clean_date}</code>\n"
+        text += f"<code>{clean_id:<2} | {clean_kit:<4} | {vol_str:<8} | {clean_date}</code>\n"
     
     text += "\nЩоб видалити запис, використайте команду:\n<code>/del [ID]</code> (наприклад: <code>/del 5</code>)"
     await message.answer(text, parse_mode="HTML")
