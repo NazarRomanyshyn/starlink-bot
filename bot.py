@@ -54,18 +54,28 @@ async def process_and_save_report(text: str, chat_id: int):
 
     # Парсимо звіт Starlink
     starlink_match = re.search(r"KIT.*?(\d{3})", text, re.IGNORECASE)
-    volume_match = re.search(r"([\d.,]+)\s*МБ", text, re.IGNORECASE)
+    
+    # Оновлений regex: шукає число + МБ або ГБ (разом чи через пробіл)
+    volume_match = re.search(r"([\d.,]+)\s*(МБ|ГБ|MB|GB)", text, re.IGNORECASE)
     datetime_match = re.search(r"(\d{4}-\d{2}-\d{2})", text)
 
     if starlink_match and volume_match:
         try:
             starlink = starlink_match.group(1)
-            volume = float(volume_match.group(1).replace(",", "."))
+            raw_volume = float(volume_match.group(1).replace(",", "."))
+            unit = volume_match.group(2).upper()
+
+            # Якщо вказано в ГБ — переводимо в МБ для збереження в базу
+            if "Г" in unit or "G" in unit:
+                volume = raw_volume * 1024
+            else:
+                volume = raw_volume
+
             download_date = datetime_match.group(1) if datetime_match else datetime.now().strftime("%Y-%m-%d")
 
-            # Записуємо в базу даних SQLite на ПК
+            # Записуємо в базу даних SQLite на ПК (зберігаємо в МБ)
             await add_download(starlink, volume, download_date)
-            print(f"[УСПІХ БД] Записано: KIT {starlink} | {volume} МБ | {download_date}")
+            print(f"[УСПІХ БД] Записано: KIT {starlink} | {raw_volume} {unit} ({volume:.2f} МБ) | {download_date}")
         except Exception as e:
             print(f"[ПОМИЛКА БАЗИ]: {e}")
 
@@ -95,19 +105,32 @@ async def send_report(chat_id: int, is_final: bool = False):
     month_name = f"{UKRAINIAN_MONTHS_NOMINATIVE[now.month]} {now.year}"
 
     if is_final:
-        header = f"<b>ПІДСУМОК СТАРИНК ({month_name})</b>\n<code>KIT  | МБ       | Дати</code>\n<code>-----|----------|------</code>"
+        header = f"<b>ПІДСУМОК СТАРИНК ({month_name})</b>\n<code>KIT  | Об'єм     | Дати</code>\n<code>-----|-----------|------</code>"
     else:
-        header = f"<b>ЗВІТ СТАРИНК ({month_name})</b>\n<code>KIT  | МБ       | Дати</code>\n<code>-----|----------|------</code>"
+        header = f"<b>ЗВІТ СТАРИНК ({month_name})</b>\n<code>KIT  | Об'єм     | Дати</code>\n<code>-----|-----------|------</code>"
 
     rows = []
     total_all = 0.0
     for starlink, data in sorted_items:
         total_all += data["total"]
-        vol_str = f"{data['total']:.2f}"
-        dates = ", ".join(data["dates"]) if data["dates"] else "-"
-        rows.append(f"<code>{starlink:<4} | {vol_str:<8} | {dates}</code>")
+        val = data["total"]
+        
+        # Автоматичне форматування: якщо більше 1024 МБ, показуємо в ГБ
+        if val >= 1024:
+            vol_str = f"{val / 1024:.2f} ГБ"
+        else:
+            vol_str = f"{val:.2f} МБ"
 
-    footer = f"<code>-----|----------|------</code>\n<b>ЗАГАЛОМ:</b> <code>{total_all:.2f} МБ</code>"
+        dates = ", ".join(data["dates"]) if data["dates"] else "-"
+        rows.append(f"<code>{starlink:<4} | {vol_str:<9} | {dates}</code>")
+
+    # Форматування загального підсумку
+    if total_all >= 1024:
+        total_str = f"{total_all / 1024:.2f} ГБ"
+    else:
+        total_str = f"{total_all:.2f} МБ"
+
+    footer = f"<code>-----|-----------|------</code>\n<b>ЗАГАЛОМ:</b> <code>{total_str}</code>"
     if is_final:
         footer += "\n<b>Місяць закрито.</b>"
 
@@ -129,16 +152,20 @@ async def daily_report_job():
 
 @dp.message(Command("list"))
 async def cmd_list(message: Message):
-    print("👉 НАТИСНУТО КОМАНДУ /list !")  # <--- Цей рядок виведе текст у термінал
+    print("👉 НАТИСНУТО КОМАНДУ /list !")
     records = await get_recent_downloads(10)
     if not records:
         await message.answer("База даних порожня.")
         return
 
-    text = "<b>Останні записи в базі:</b>\n<code>ID | KIT  | МБ     | Дата</code>\n<code>---|------|--------|------------</code>\n"
+    text = "<b>Останні записи в базі:</b>\n<code>ID | KIT  | Об'єм    | Дата</code>\n<code>---|------|----------|------------</code>\n"
     for row in records:
         rec_id, kit, volume, date = row
-        text += f"<code>{rec_id:<2} | {kit:<4} | {volume:<6} | {date}</code>\n"
+        if volume >= 1024:
+            vol_str = f"{volume / 1024:.2f} ГБ"
+        else:
+            vol_str = f"{volume:.2f} МБ"
+        text += f"<code>{rec_id:<2} | {kit:<4} | {vol_str:<8} | {date}</code>\n"
     
     text += "\nЩоб видалити запис, використайте команду:\n<code>/del [ID]</code> (наприклад: <code>/del 5</code>)"
     await message.answer(text, parse_mode="HTML")
@@ -166,7 +193,7 @@ async def cmd_delete(message: Message):
     else:
         await message.answer(f"❌ Запис із ID <b>{record_id}</b> не знайдено в базі.", parse_mode="HTML")
 
-# Звичайні повідомлення в ЛС боту (якщо хтось пише вручну)
+# Звичайні повідомлення в ЛС боту
 @dp.message()
 async def handle_all_messages(message: Message):
     text = message.text or message.caption or ""
@@ -201,7 +228,7 @@ async def handle_ping(request):
 async def start_web_server():
     app = web.Application()
     app.router.add_post('/send', handle_web_request)
-    app.router.add_get('/', handle_ping)  # <--- Додайте цей рядок
+    app.router.add_get('/', handle_ping)
     
     runner = web.AppRunner(app)
     await runner.setup()
