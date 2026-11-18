@@ -106,9 +106,9 @@ async def send_report(chat_id: int, is_final: bool = False):
     month_name = f"{UKRAINIAN_MONTHS_NOMINATIVE[now.month]} {now.year}"
 
     if is_final:
-        header = f"<b>ПІДСУМОК СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм     |Дати</code>\n<code>---|-----------|------</code>"
+        header = f"<b>ПІДСУМОК СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм   |Дати</code>\n<code>---|---------|----</code>"
     else:
-        header = f"<b>ЗВІТ СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм     |Дати</code>\n<code>---|----------|------</code>"
+        header = f"<b>ЗВІТ СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм   |Дати</code>\n<code>---|---------|----</code>"
 
     rows = []
     total_all = 0.0
@@ -117,23 +117,23 @@ async def send_report(chat_id: int, is_final: bool = False):
         val = data["total"]
         
         if val >= 1024:
-            vol_str = f"{val / 1024:.2f} ГБ"
+            vol_str = f"{val / 1024:.2f}ГБ"
         else:
-            vol_str = f"{val:.2f} МБ"
+            vol_str = f"{val:.2f}МБ"
 
         # Очищуємо дати від зайвих пробілів
         clean_dates = [re.sub(r'\s+', '', str(d)) for d in data["dates"]]
         dates = ", ".join(clean_dates) if clean_dates else "-"
         
         clean_starlink = str(starlink).strip()
-        rows.append(f"<code>{clean_starlink:<4} | {vol_str:<9} | {dates}</code>")
+        rows.append(f"<code>{clean_starlink:<3}|{vol_str:<9}|{dates}</code>")
 
     if total_all >= 1024:
         total_str = f"{total_all / 1024:.2f} ГБ"
     else:
         total_str = f"{total_all:.2f} МБ"
 
-    footer = f"<code>-----|-----------|------</code>\n<b>ЗАГАЛОМ:</b> <code>{total_str}</code>"
+    footer = f"<code>---|---------|----</code>\n<b>ЗАГАЛОМ:</b> <code>{total_str}</code>"
     if is_final:
         footer += "\n<b>Місяць закрито.</b>"
 
@@ -161,20 +161,20 @@ async def cmd_list(message: Message):
         await message.answer("База даних порожня.")
         return
 
-    text = "<b>Останні записи в базі:</b>\n<code>ID |KIT|Об'єм    |Дата</code>\n<code>--|------|----------|------------</code>\n"
+    text = "<b>Останні записи в базі:</b>\n<code>ID|KIT|Об'єм   |Дата</code>\n<code>--|---|--------|----------</code>\n"
     for row in records:
         rec_id, kit, volume, date = row
         if volume >= 1024:
-            vol_str = f"{volume / 1024:.2f} ГБ"
+            vol_str = f"{volume / 1024:.2f}ГБ"
         else:
-            vol_str = f"{volume:.2f} МБ"
+            vol_str = f"{volume:.2f}МБ"
         
         # Повне очищення пробілів у полях з бази
         clean_id = str(rec_id).strip()
         clean_kit = str(kit).strip()
         clean_date = str(date).strip()
         
-        text += f"<code>{clean_id:<2} | {clean_kit:<4} | {vol_str:<8} | {clean_date}</code>\n"
+        text += f"<code>{clean_id:<2}|{clean_kit:<3}|{vol_str:<8}|{clean_date}</code>\n"
     
     text += "\nЩоб видалити запис, використайте команду:\n<code>/del [ID]</code> (наприклад: <code>/del 5</code>)"
     await message.answer(text, parse_mode="HTML")
