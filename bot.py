@@ -106,9 +106,9 @@ async def send_report(chat_id: int, is_final: bool = False):
     month_name = f"{UKRAINIAN_MONTHS_NOMINATIVE[now.month]} {now.year}"
 
     if is_final:
-        header = f"<b>ПІДСУМОК СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм     |Дати</code>\n<code>----|-----------|------</code>"
+        header = f"<b>ПІДСУМОК СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм     |Дати</code>\n<code>---|-----------|------</code>"
     else:
-        header = f"<b>ЗВІТ СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм     |Дати</code>\n<code>----|-----------|------</code>"
+        header = f"<b>ЗВІТ СТАРИНК ({month_name})</b>\n<code>KIT|Об'єм     |Дати</code>\n<code>---|----------|------</code>"
 
     rows = []
     total_all = 0.0
