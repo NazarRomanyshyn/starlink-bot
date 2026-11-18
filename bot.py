@@ -49,19 +49,20 @@ async def cmd_report(message: Message):
 
 # ========= СПІЛЬНА ЛОГІКА ЗАПИСУ ТА ВІДПРАВКИ =========
 async def process_and_save_report(text: str, chat_id: int):
-    if not text.strip():
+    if not text or not text.strip():
         return
 
+    # Забираємо зайві пробіли з вхідного тексту
+    cleaned_text = text.strip()
+
     # Парсимо звіт Starlink
-    starlink_match = re.search(r"KIT.*?(\d{3})", text, re.IGNORECASE)
-    
-    # Оновлений regex: шукає число + МБ або ГБ (разом чи через пробіл)
-    volume_match = re.search(r"([\d.,]+)\s*(МБ|ГБ|MB|GB)", text, re.IGNORECASE)
-    datetime_match = re.search(r"(\d{4}-\d{2}-\d{2})", text)
+    starlink_match = re.search(r"KIT.*?(\d{3})", cleaned_text, re.IGNORECASE)
+    volume_match = re.search(r"([\d.,]+)\s*(МБ|ГБ|MB|GB)", cleaned_text, re.IGNORECASE)
+    datetime_match = re.search(r"(\d{4}-\d{2}-\d{2})", cleaned_text)
 
     if starlink_match and volume_match:
         try:
-            starlink = starlink_match.group(1)
+            starlink = starlink_match.group(1).strip()
             raw_volume = float(volume_match.group(1).replace(",", "."))
             unit = volume_match.group(2).upper()
 
@@ -71,7 +72,7 @@ async def process_and_save_report(text: str, chat_id: int):
             else:
                 volume = raw_volume
 
-            download_date = datetime_match.group(1) if datetime_match else datetime.now().strftime("%Y-%m-%d")
+            download_date = datetime_match.group(1).strip() if datetime_match else datetime.now().strftime("%Y-%m-%d")
 
             # Записуємо в базу даних SQLite на ПК (зберігаємо в МБ)
             await add_download(starlink, volume, download_date)
@@ -79,10 +80,10 @@ async def process_and_save_report(text: str, chat_id: int):
         except Exception as e:
             print(f"[ПОМИЛКА БАЗИ]: {e}")
 
-    # Дублюємо повідомлення в групу (або куди вказано)
+    # Дублюємо повідомлення в групу (або куди вказано), прибравши зайві пробіли
     try:
         target_chat = GROUP_CHAT_ID if GROUP_CHAT_ID else chat_id
-        await bot.send_message(chat_id=target_chat, text=text)
+        await bot.send_message(chat_id=target_chat, text=cleaned_text)
     except Exception as e:
         print(f"Помилка відправки в Telegram: {e}")
 
@@ -115,16 +116,15 @@ async def send_report(chat_id: int, is_final: bool = False):
         total_all += data["total"]
         val = data["total"]
         
-        # Автоматичне форматування: якщо більше 1024 МБ, показуємо в ГБ
         if val >= 1024:
             vol_str = f"{val / 1024:.2f} ГБ"
         else:
             vol_str = f"{val:.2f} МБ"
 
-        dates = ", ".join(data["dates"]) if data["dates"] else "-"
-        rows.append(f"<code>{starlink:<4} | {vol_str:<9} | {dates}</code>")
+        # Очищуємо дати від зайвих пробілів
+        dates = ", ".join([d.strip() for d in data["dates"]]) if data["dates"] else "-"
+        rows.append(f"<code>{starlink.strip():<4} | {vol_str:<9} | {dates}</code>")
 
-    # Форматування загального підсумку
     if total_all >= 1024:
         total_str = f"{total_all / 1024:.2f} ГБ"
     else:
@@ -165,7 +165,12 @@ async def cmd_list(message: Message):
             vol_str = f"{volume / 1024:.2f} ГБ"
         else:
             vol_str = f"{volume:.2f} МБ"
-        text += f"<code>{rec_id:<2} | {kit:<4} | {vol_str:<8} | {date}</code>\n"
+        
+        # Прибираємо зайві пробіли у полях з бази
+        clean_kit = str(kit).strip()
+        clean_date = str(date).strip()
+        
+        text += f"<code>{rec_id!s:<2} | {clean_kit:<4} | {vol_str:<8} | {clean_date}</code>\n"
     
     text += "\nЩоб видалити запис, використайте команду:\n<code>/del [ID]</code> (наприклад: <code>/del 5</code>)"
     await message.answer(text, parse_mode="HTML")
@@ -175,7 +180,7 @@ async def cmd_list(message: Message):
 @dp.message(Command("del", "delete"))
 async def cmd_delete(message: Message):
     args = message.text.split(maxsplit=1)
-    if len(args) < 2 or not args[1].isdigit():
+    if len(args) < 2 or not args[1].strip().isdigit():
         await message.answer(
             "⚠️ Будь ласка, вкажіть ID запису для видалення.\n"
             "Приклад: <code>/del 5</code>\n"
@@ -184,7 +189,7 @@ async def cmd_delete(message: Message):
         )
         return
 
-    record_id = int(args[1])
+    record_id = int(args[1].strip())
     success = await delete_download_by_id(record_id)
 
     if success:
@@ -210,7 +215,7 @@ async def handle_web_request(request):
             data = await request.post()
 
         chat_id = data.get("chat_id")
-        text = data.get("text")
+        text = data.get("text", "")
 
         print(f"\n[ВЕБ-СЕРВЕР] Отримано звіт від додатку! Текст: {text}")
         
