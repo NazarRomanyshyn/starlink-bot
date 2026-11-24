@@ -1,3 +1,5 @@
+"""Telegram-бот та веб-сервер для обліку трафіку Starlink."""
+
 import asyncio
 import os
 import re
@@ -30,7 +32,6 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone=pytz.timezone(TIMEZONE))
 
-# Українські назви місяців для звітів
 UKRAINIAN_MONTHS_NOMINATIVE = {
     1: "Січень", 2: "Лютий", 3: "Березень", 4: "Квітень",
     5: "Травень", 6: "Червень", 7: "Липень", 8: "Серпень",
@@ -39,12 +40,14 @@ UKRAINIAN_MONTHS_NOMINATIVE = {
 
 
 def is_last_day_of_month() -> bool:
+    """Перевіряє, чи сьогодні останній день місяця."""
     today = datetime.now()
     last_day = monthrange(today.year, today.month)[1]
     return today.day == last_day
 
 
 def format_volume_short(val: float) -> str:
+    """Форматує об'єм у короткому вигляді для таблиці."""
     if val <= 0:
         return "0.00МБ"
     if val >= 1024:
@@ -53,6 +56,7 @@ def format_volume_short(val: float) -> str:
 
 
 def format_volume_total(val: float) -> str:
+    """Форматує загальний об'єм для підсумку."""
     if val <= 0:
         return "0.00 МБ"
     if val >= 1024:
@@ -62,6 +66,7 @@ def format_volume_total(val: float) -> str:
 
 @dp.message(Command("kits"))
 async def cmd_kits(message: Message):
+    """Показує список дозволених номерів KIT."""
     kits = await get_all_kits()
     kits_str = ", ".join(kits)
     await message.answer(
@@ -70,15 +75,15 @@ async def cmd_kits(message: Message):
     )
 
 
-# ========= КОМАНДА /report =========
 @dp.message(Command("report"))
 async def cmd_report(message: Message):
+    """Надсилає звіт за поточний місяць."""
     is_final = is_last_day_of_month()
     await send_report(chat_id=message.chat.id, is_final=is_final)
 
 
-# ========= СПІЛЬНА ЛОГІКА ЗАПИСУ ТА ВІДПРАВКИ =========
 async def process_and_save_report(text: str, chat_id: int):
+    """Парсить вхідний звіт, перевіряє KIT, записує в БД і дублює в чат."""
     if not text or not str(text).strip():
         return
 
@@ -136,8 +141,8 @@ async def process_and_save_report(text: str, chat_id: int):
         print(f"Помилка відправки в Telegram: {e}")
 
 
-# ========= ФОРМУВАННЯ ЗВІТУ (ТАБЛИЦЯ) =========
 async def send_report(chat_id: int, is_final: bool = False):
+    """Формує та надсилає таблицю місячного звіту."""
     report = await get_monthly_report()
 
     sorted_items = sorted(
@@ -187,6 +192,7 @@ async def send_report(chat_id: int, is_final: bool = False):
 
 
 async def daily_report_job():
+    """Щоденна задача надсилання звіту о 17:40."""
     today_count = await get_today_count()
     is_final = is_last_day_of_month()
 
@@ -199,6 +205,7 @@ async def daily_report_job():
 
 @dp.message(Command("list"))
 async def cmd_list(message: Message):
+    """Виводить останні 10 записів із бази."""
     print("👉 НАТИСНУТО КОМАНДУ /list !")
     records = await get_recent_downloads(10)
     if not records:
@@ -224,9 +231,9 @@ async def cmd_list(message: Message):
     await message.answer(text, parse_mode="HTML")
 
 
-# ========= КОМАНДА /del або /delete (видалити рядок за ID) =========
 @dp.message(Command("del", "delete"))
 async def cmd_delete(message: Message):
+    """Видаляє запис з бази за ID."""
     args = message.text.split(maxsplit=1)
     if len(args) < 2 or not args[1].strip().isdigit():
         await message.answer(
@@ -247,17 +254,17 @@ async def cmd_delete(message: Message):
         await message.answer(f"❌ Запис із ID <b>{record_id}</b> не знайдено в базі.", parse_mode="HTML")
 
 
-# Звичайні повідомлення в ЛС боту
 @dp.message()
 async def handle_all_messages(message: Message):
+    """Обробляє звичайні текстові повідомлення."""
     text = message.text or message.caption or ""
     if text.startswith("/"):
         return
     await process_and_save_report(text, message.chat.id)
 
 
-# ========= ЛОКАЛЬНИЙ ВЕБ-СЕРВЕР ДЛЯ ДОДАТКУ =========
 async def handle_web_request(request):
+    """Приймає POST-запити зі звітами від додатка."""
     try:
         try:
             data = await request.json()
@@ -278,10 +285,12 @@ async def handle_web_request(request):
 
 
 async def handle_ping(request):
+    """Перевірка стану веб-сервера."""
     return web.Response(text="Bot is alive!")
 
 
 async def start_web_server():
+    """Запускає локальний aiohttp веб-сервер."""
     app = web.Application()
     app.router.add_post("/send", handle_web_request)
     app.router.add_get("/", handle_ping)
@@ -295,8 +304,8 @@ async def start_web_server():
     print(f"🌐 Веб-сервер запущено на порту {port}")
 
 
-# ========= ЗАПУСК =========
 async def main():
+    """Головна точка входу для запуску бота та планувальника."""
     await init_db()
 
     scheduler.add_job(
